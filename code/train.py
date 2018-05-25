@@ -102,7 +102,7 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
     kl_loss = torch.nn.KLDivLoss()(lsmax_denoise_out, rates_var)
 
     writer.add_scalar('data/val_loss',
-                      kl_loss.data.cpu().numpy()[0], n_iter)
+                      kl_loss.data.cpu().numpy(), n_iter)
     writer.add_scalar('data/val_rmse', np.sqrt(np.mean((
                       sargmax.data.cpu().numpy() -
                       depth_var.data.cpu()).numpy()**2) /
@@ -321,7 +321,7 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
 
         # log in tensorboard
         writer.add_scalar('data/train_loss',
-                          kl_loss.data.cpu().numpy()[0], n_iter)
+                          kl_loss.data.cpu().numpy(), n_iter)
         writer.add_scalar('data/train_rmse', np.sqrt(np.mean((
                           sargmax.data.cpu().numpy() -
                           depth_var.data.cpu().numpy())**2) /

@@ -6,7 +6,7 @@ import os.path
 # specify dataset folder here
 # that contains the output of
 # SimulateSpadMeasurements.m
-dataset_folder = os.path.abspath('../simulated_data/processed/') + '/'
+dataset_folder = os.path.abspath('/media/anant/203dd1e9-4826-4d3e-a8e8-1151dbe9e771/processed/') + '/'
 
 # this value should be set to whatever param_idx
 # values were simulated with SimulateSpadMeasurements.m
@@ -15,7 +15,7 @@ dataset_folder = os.path.abspath('../simulated_data/processed/') + '/'
 # The below code takes the intersection of the output scenes
 # to ensure that the same number of scene files are used
 # for training at each param_idx.
-simulation_param_idx = 10
+simulation_param_idx = 9
 
 def intersect_files(train_files):
     intensity_train_files = []

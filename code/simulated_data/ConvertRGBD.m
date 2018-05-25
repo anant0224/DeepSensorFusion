@@ -1,7 +1,7 @@
 % The directory where you extracted the raw dataset.
 addpath(genpath('./intrinsic_texture'));
 addpath('nyu_utils');
-datasetDir = './raw';
+datasetDir = '/media/anant/203dd1e9-4826-4d3e-a8e8-1151dbe9e771/extracted';
 
 % get the scene names
 scenes = ls(datasetDir);
@@ -12,13 +12,14 @@ addpath(genpath('./intrinsic_texture'));
 addpath('./nyu_utils');
 camera_params;
 
-parfor ss = 1:length(scenes)
-    sceneName = scenes{ss};
+for ss = 1:length(scenes)
+    sceneName = scenes{ss}
+    disp(sceneName);
     
     disp('starting!');
 
     % The name of the scene to demo.
-    outdir = ['./processed/' sceneName];
+    outdir = ['/media/anant/203dd1e9-4826-4d3e-a8e8-1151dbe9e771/debug_processed/' sceneName];
     mkdir(outdir);
 
     % The absolute directory of the 
@@ -32,13 +33,12 @@ parfor ss = 1:length(scenes)
     
     for ii = 1:length(idx)
         % check if already exists
-        depth_out = sprintf('%s/depth_%04d.mat', outdir, idx(ii));
         albedo_out = sprintf('%s/albedo_%04d.mat', outdir, idx(ii));
         intensity_out = sprintf('%s/intensity_%04d.mat', outdir, idx(ii));
         dist_out = sprintf('%s/dist_%04d.mat',outdir, idx(ii));
         dist_out_hr = sprintf('%s/dist_hr_%04d.mat',outdir, idx(ii));
 
-        if exist(depth_out,'file') && exist(albedo_out,'file') ...
+        if exist(albedo_out,'file') ...
                 && exist(intensity_out,'file') && exist(dist_out,'file') ...
                 && exist(dist_out_hr,'file')
                 disp('continuing');
@@ -72,13 +72,14 @@ parfor ss = 1:length(scenes)
             imgDist = imresize(imgDist_hr, [256,256], 'bilinear');
             imgDist_hr = imresize(imgDist_hr, [512,512], 'bilinear');
             S = RollingGuidanceFilter(I, 3, 0.1, 4);
-            [albedo, ~] = intrinsic_decomp(I, S, imgDepthFilled, 0.0001, 0.8, 0.5);
+            albedo = I;
+%             [albedo, ~] = intrinsic_decomp(I, S, imgDepthFilled, 0.0001, 0.8, 0.5);
             intensity = rgb2gray(I);
 
             dist = imgDist;
             intensity = im2uint8(intensity);
             dist_hr = imgDist_hr;
-            ConvertRGBDParsave(albedo_out, dist_out, intensity_out, dist_out_hr, albedo, dist, intensity, dist_hr)
+%             ConvertRGBDParsave(albedo_out, dist_out, intensity_out, dist_out_hr, albedo, dist, intensity, dist_hr)
              
         catch e
             fprintf(1,'ERROR: %s\n',e.identifier);
