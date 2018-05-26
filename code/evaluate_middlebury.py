@@ -100,22 +100,84 @@ def parse_arguments(args):
 
 
 def process_denoise(opt, model, middlebury_filename, out_filename):
+    num_bins = 1024
+    pulse_max_idx = 11 - 1
+    N = 500
+    lamda = 1
+    mu = 30
+
     intensity = scipy.io.loadmat(middlebury_filename)['intensity']
     intensity = np.asarray(intensity).astype(np.float32)
     s1, s2 = intensity.shape
-
-    spad = scipy.io.loadmat(middlebury_filename)['spad']
-    spad = scipy.sparse.csc_matrix.todense(spad)
-    spad = np.asarray(spad).reshape([s2, s1, -1])
-
     intensity = torch.from_numpy(intensity).type(dtype)
     intensity = intensity.unsqueeze(0).unsqueeze(0)
     intensity_var = Variable(intensity)
+
+    
+    bins = (np.asarray(scipy.io.loadmat(
+        middlebury_filename)['range_bins']).astype(
+            np.float32).reshape([s1, s2])-1)[None, :, :]
+
+    rates = np.zeros((s1, s2, num_bins))
+
+    signal_ppp = np.asarray(scipy.io.loadmat(
+        middlebury_filename)['signal_ppp']).reshape([s1, s2])
+    signal_ppp *= mu
+    ambient_ppp = np.asarray(scipy.io.loadmat(
+        middlebury_filename)['ambient_ppp']).reshape([s1, s2])
+    ambient_ppp *= lamda
+    # ambient_ppp += self.dark_img / num_bins
+
+    pulse = np.asarray(scipy.io.loadmat(
+        middlebury_filename)['pulse']).reshape([s1, s2, 22])
+
+    rates[:,:,0:np.shape(pulse)[2]] = pulse
+    rates[:,:,0:np.shape(pulse)[2]] = np.multiply(rates[:,:,0:np.shape(pulse)[2]], np.tile(np.expand_dims(signal_ppp, 2), [1, 1, np.shape(pulse)[2]]))
+    rates = rates + np.tile(np.expand_dims(ambient_ppp, 2), [1, 1, num_bins])
+
+    for jj in range(s1):
+        for kk in range(s2):
+            # print(rates[jj, kk, 0:num_bins])
+            # print(int(bins[0, jj, kk]) - pulse_max_idx)
+            rates[jj, kk, 0:num_bins] = np.roll(rates[jj, kk, 0:num_bins], int(bins[0, jj, kk]) - pulse_max_idx)
+    old_rates = np.copy(rates)
+    rates = np.concatenate((rates, np.zeros((s1, s2, 1))), axis=2)
+
+    for jj in range(s1):
+        for kk in range(s2):
+            # print(rates[jj, kk, 0:num_bins])
+            temp = np.exp(- np.concatenate(([0], np.cumsum(rates[jj, kk, 0:num_bins]))))
+            rates[jj, kk, :] = [1] - np.concatenate((np.exp(- rates[jj, kk, 0:num_bins]), [0]))
+            rates[jj, kk, :] = np.multiply(rates[jj, kk, :], temp)
+    # print(np.sum(rates, axis=1))
+    # print(np.shape(np.sum(rates, axis=1)))
+
+    # rates = np.maximum(rates, 0)
+    # rates = np.divide(rates, np.expand_dims(np.sum(rates, axis=2), 2))
+    # print(np.sum(rates, axis=2))
+    detections = np.random.binomial(N, rates)
+    # print(np.where(np.isnan(detections)))
+    # print(np.shape(detections))
+    print(np.sum(np.sum(np.sum(detections, axis=0), axis=0)))
+    # print(np.sum(np.sum(detections, axis=0), axis=0))
+    # print(np.shape(np.sum(np.sum(detections, axis=0), axis=0)))
+    spad = detections[:, :, 0:num_bins].reshape([s1, s2, -1])
     spad = torch.from_numpy(np.transpose(spad, (2, 1, 0)))
     spad = spad.unsqueeze(0).unsqueeze(0)
+
+
+
+
+    # spad = scipy.io.loadmat(middlebury_filename)['spad']
+    # spad = scipy.sparse.csc_matrix.todense(spad)
+    # spad = np.asarray(spad).reshape([s2, s1, -1])
+
+    # spad = torch.from_numpy(np.transpose(spad, (2, 1, 0)))
+    # spad = spad.unsqueeze(0).unsqueeze(0)
+
     spad_var = Variable(spad.type(dtype))
 
-    batchsize = 2
+    batchsize = 1
     dim1 = 64
     dim2 = 64
     step = 32
@@ -137,15 +199,16 @@ def process_denoise(opt, model, middlebury_filename, out_filename):
 
             sp1 = Variable(torch.zeros(iter_batchsize,
                                        1, 1024, dim1, dim2))
-            i1 = Variable(torch.zeros(iter_batchsize,
-                                      1, dim1, dim2))
             for k in range(iter_batchsize):
                 sp1[k, :, :, :, :] = spad_var[:, :, :, i*step:(i)*step + dim1,
                                               (j+k)*step:(j+k)*step + dim2]
-                i1[k, :, :, :] = intensity_var[:, :, i*step:(i)*step + dim1,
-                                               (j+k)*step:(j+k)*step + dim2]
 
             if opt['option'] == 'FusionDenoise':
+                i1 = Variable(torch.zeros(iter_batchsize,
+                                          1, dim1, dim2))
+                for k in range(iter_batchsize):
+                    i1[k, :, :, :] = intensity_var[:, :, i*step:(i)*step + dim1,
+                                                    (j+k)*step:(j+k)*step + dim2]
                 denoise_out, sargmax = model(sp1.type(dtype), i1.type(dtype))
             else:
                 denoise_out, sargmax = model(sp1.type(dtype))

@@ -158,13 +158,17 @@ class SpadDataset(torch.utils.data.Dataset):
         rates[:,:,0:np.shape(pulse)[2]] = pulse
         rates[:,:,0:np.shape(pulse)[2]] = np.multiply(rates[:,:,0:np.shape(pulse)[2]], np.tile(np.expand_dims(signal_ppp, 2), [1, 1, np.shape(pulse)[2]]))
         rates = rates + np.tile(np.expand_dims(ambient_ppp, 2), [1, 1, num_bins])
-        rates = np.concatenate((rates, np.zeros((res, res, 1))), axis=2)
 
         for jj in range(res):
             for kk in range(res):
                 # print(rates[jj, kk, 0:num_bins])
                 # print(int(bins[0, jj, kk]) - pulse_max_idx)
                 rates[jj, kk, 0:num_bins] = np.roll(rates[jj, kk, 0:num_bins], int(bins[0, jj, kk]) - pulse_max_idx)
+        old_rates = np.copy(rates)
+        rates = np.concatenate((rates, np.zeros((res, res, 1))), axis=2)
+
+        for jj in range(res):
+            for kk in range(res):
                 # print(rates[jj, kk, 0:num_bins])
                 temp = np.exp(- np.concatenate(([0], np.cumsum(rates[jj, kk, 0:num_bins]))))
                 rates[jj, kk, :] = [1] - np.concatenate((np.exp(- rates[jj, kk, 0:num_bins]), [0]))
@@ -185,9 +189,9 @@ class SpadDataset(torch.utils.data.Dataset):
         spad = np.transpose(spad, (0, 3, 2, 1))
         # print(np.shape(rates))
 
-        rates = rates[:, :, 0:num_bins].reshape([1, 64, 64, -1])
-        rates = np.transpose(rates, (0, 3, 1, 2))
-        rates = rates / np.sum(rates, axis=1)[None, :, :, :]
+        old_rates = old_rates[:, :, 0:num_bins].reshape([1, 64, 64, -1])
+        old_rates = np.transpose(old_rates, (0, 3, 1, 2))
+        old_rates = old_rates / np.sum(old_rates, axis=1)[None, :, :, :]
 
         bins /= 1023
         bins_hr /= 1023
@@ -209,7 +213,7 @@ class SpadDataset(torch.utils.data.Dataset):
         #     self.spad_files[idx])['SBR']).astype(np.float32)
         # photons = np.asarray(scipy.io.loadmat(
         #     self.spad_files[idx])['photons']).astype(np.float32)
-        sample = {'rates': rates, 'spad': spad, 'bins_hr': bins_hr,
+        sample = {'rates': old_rates, 'spad': spad, 'bins_hr': bins_hr,
                   'intensity': intensity, 'bins': bins}
 
         if self.transform:
