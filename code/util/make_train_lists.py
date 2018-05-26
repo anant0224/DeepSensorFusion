@@ -6,7 +6,8 @@ import os.path
 # specify dataset folder here
 # that contains the output of
 # SimulateSpadMeasurements.m
-dataset_folder = os.path.abspath('/media/anant/203dd1e9-4826-4d3e-a8e8-1151dbe9e771/processed/') + '/'
+dataset_folder = os.path.abspath('/home/anantgupta/Documents/processed/') + '/'
+spad_folder = os.path.abspath('/home/anantgupta/Documents/spad/') + '/'
 
 # this value should be set to whatever param_idx
 # values were simulated with SimulateSpadMeasurements.m
@@ -22,6 +23,7 @@ def intersect_files(train_files):
     for t in train_files:
         intensity_train_files.append(glob(dataset_folder + t + 'intensity*.mat'))
     intensity_train_files = [file for sublist in intensity_train_files for file in sublist]
+    print(intensity_train_files)
 
     spad_train_files = []
     if simulation_param_idx is not None:
@@ -31,9 +33,12 @@ def intersect_files(train_files):
     for p in noise_param:
         spad_train_files.append([])
         for t in train_files:
-            spad_train_files[-1].append(glob(dataset_folder + t + 'spad*p{}.mat'.format(p)))
+            spad_train_files[-1].append(glob(spad_folder + t + 'spad*p{}.mat'.format(p)))
+        print(spad_train_files)
         spad_train_files[-1] = [file for sublist in spad_train_files[-1] for file in sublist]
         spad_train_files[-1] = [re.sub(r'(.*)/spad_(.*)_p.*.mat', r'\1/intensity_\2.mat',
+                                 file) for file in spad_train_files[-1]]
+        spad_train_files[-1] = [re.sub(r'(.*)spad(.*)', r'\1processed\2',
                                  file) for file in spad_train_files[-1]]
 
     intensity_train_files = set(intensity_train_files)

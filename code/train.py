@@ -291,16 +291,18 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
         model.train()
         spad = sample['spad']
         rates = sample['rates']
-        intensity = sample['intensity']
-        bins = sample['bins']
+        #intensity = sample['intensity']
+        #bins = sample['bins']
 
         spad_var = Variable(spad.type(dtype))
-        depth_var = Variable(bins.type(dtype))
+        #depth_var = Variable(bins.type(dtype))
         rates_var = Variable(rates.type(dtype))
-        intensity_var = Variable(intensity.type(dtype))
+        #intensity_var = Variable(intensity.type(dtype))
 
         # Run the model forward to compute scores and loss.
         if model_name == 'FusionDenoiseModel':
+            intensity = sample['intensity']
+            intensity_var = Variable(intensity.type(dtype))
             denoise_out, sargmax = model(spad_var, intensity_var)
         elif model_name == 'DenoiseModel':
             denoise_out, sargmax = model(spad_var)
@@ -320,12 +322,15 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
         n_iter += 1
 
         # log in tensorboard
-        writer.add_scalar('data/train_loss',
-                          kl_loss.data.cpu().numpy(), n_iter)
-        writer.add_scalar('data/train_rmse', np.sqrt(np.mean((
-                          sargmax.data.cpu().numpy() -
-                          depth_var.data.cpu().numpy())**2) /
-                          sargmax.data.size()[0]), n_iter)
+        if (n_iter + 1) % val_every == 0:
+            bins = sample['bins']
+            depth_var = Variable(bins.type(dtype))
+            writer.add_scalar('data/train_loss',
+                              kl_loss.data.cpu().numpy(), n_iter)
+            writer.add_scalar('data/train_rmse', np.sqrt(np.mean((
+                              sargmax.data.cpu().numpy() -
+                              depth_var.data.cpu().numpy())**2) /
+                              sargmax.data.size()[0]), n_iter)
 
         if (n_iter + 1) % val_every == 0:
             model.eval()
@@ -440,6 +445,7 @@ def parse_arguments(args):
 
 
 def main():
+    print(torch.cuda.is_available())
     # get arguments and modify config file as necessary
     args = parser.parse_args()
     opt = parse_arguments(args)
