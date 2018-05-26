@@ -158,6 +158,7 @@ class SpadDataset(torch.utils.data.Dataset):
         rates[:,:,0:np.shape(pulse)[2]] = pulse
         rates[:,:,0:np.shape(pulse)[2]] = np.multiply(rates[:,:,0:np.shape(pulse)[2]], np.tile(np.expand_dims(signal_ppp, 2), [1, 1, np.shape(pulse)[2]]))
         rates = rates + np.tile(np.expand_dims(ambient_ppp, 2), [1, 1, num_bins])
+
         # opt filtering
         filtering_fractions = 1 / np.multiply(num_bins, ambient_ppp)
         filtering_fractions = np.minimum(1, filtering_fractions)
