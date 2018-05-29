@@ -1,8 +1,10 @@
 import torch
 import torch.utils.data
 import scipy.io
+import scipy.signal
 import numpy as np
 import skimage.transform
+import matplotlib.pyplot as plt
 np.set_printoptions(threshold=np.nan)
 np.seterr(all='raise')
 
@@ -24,6 +26,8 @@ class ToTensor(object):
                                                 sample['intensity'],\
                                                 sample['bins']
         sins = sample['signal_ppp']
+        coates = torch.from_numpy(sample['coates'])
+        med = torch.from_numpy(sample['med'])
         rates = torch.from_numpy(rates)
         spad = torch.from_numpy(spad)
         bins_hr = torch.from_numpy(bins_hr)
@@ -32,7 +36,7 @@ class ToTensor(object):
         sins = torch.from_numpy(sins)
         return {'rates': rates, 'spad': spad,
                 'bins_hr': bins_hr, 'bins': bins,
-                'intensity': intensity, 'signal_ppp':sins}
+                'intensity': intensity, 'signal_ppp':sins,'coates': coates, 'med': med}
 
 
 class RandomCrop(object):
@@ -54,6 +58,7 @@ class RandomCrop(object):
                                                 sample['intensity'],\
                                                 sample['bins']
         sins = sample['signal_ppp']
+        coates = sample['coates']
 
         h, w = spad.shape[2:]
         new_h = self.output_size
@@ -62,6 +67,8 @@ class RandomCrop(object):
 
         top = np.random.randint(0, h - new_h)
         left = np.random.randint(0, w - new_w)
+
+        med = sample['med'][:, top: top + new_h, left: left + new_w]
 
         rates = rates[:, :, top: top + new_h,
                       left: left + new_w]
@@ -80,6 +87,8 @@ class RandomCrop(object):
                     left: left + new_w]
         sins = sins[:, top: top + new_h,
                     left: left + new_w]
+        coates = coates[:, top: top + new_h,
+                        left: left + new_w]
         intensity = intensity.squeeze()[8*top: 8*top + 8*new_h,
                                         8*left: 8*left + 8*new_w]
         intensity = skimage.transform.resize(intensity,
@@ -91,7 +100,7 @@ class RandomCrop(object):
 
         return {'rates': rates, 'spad': spad,
                 'bins_hr': bins_hr, 'bins': bins,
-                'intensity': intensity, 'signal_ppp':sins}
+                'intensity': intensity, 'signal_ppp':sins,'coates': coates, 'med': med}
 
 
 class SpadDataset(torch.utils.data.Dataset):
@@ -135,7 +144,6 @@ class SpadDataset(torch.utils.data.Dataset):
         N = 500
         # lamda = 1
         # mu = 200
-
         signal_level = 10
         background_level = 50
         intensity = np.asarray(scipy.io.loadmat(
@@ -146,6 +154,7 @@ class SpadDataset(torch.utils.data.Dataset):
         bins = (np.asarray(scipy.io.loadmat(
             self.spad_files[idx])['bin']).astype(
                 np.float32).reshape([64, 64])-1)[None, :, :]
+
         bins_hr = (np.asarray(scipy.io.loadmat(
             self.spad_files[idx])['bin_hr']).astype(
                 np.float32).reshape([512, 512])-1)[None, :, :]
@@ -189,6 +198,7 @@ class SpadDataset(torch.utils.data.Dataset):
                 temp = np.exp(- np.concatenate(([0], np.cumsum(rates[jj, kk, 0:num_bins]))))
                 rates[jj, kk, :] = [1] - np.concatenate((np.exp(- rates[jj, kk, 0:num_bins]), [0]))
                 rates[jj, kk, :] = np.multiply(rates[jj, kk, :], temp)
+
         # print(np.sum(rates, axis=1))
         # print(np.shape(np.sum(rates, axis=1)))
 
@@ -197,19 +207,26 @@ class SpadDataset(torch.utils.data.Dataset):
         # print(np.sum(rates, axis=2))
 
         detections = np.random.binomial(N, rates)
-        # apply coates transformation        
-        #denoms = N - np.concatenate(([0], np.cumsum(detections[:, :, 0:num_bins])))
-        #quotients = np.nan_to_num(detections / denoms)
-        #detections = quotients
-        
-        # print(np.where(np.isnan(detections)))
-        # print(np.shape(detections))
-        #print(np.sum(np.sum(np.sum(detections, axis=0), axis=0)))
-        # print(np.sum(np.sum(detections, axis=0), axis=0))
-        # print(np.shape(np.sum(np.sum(detections, axis=0), axis=0)))
-        spad = detections[:, :, 0:num_bins].reshape([1, 64, 64, -1])
+
+        # apply coates transformation
+        denoms = N - np.concatenate((np.zeros((res, res, 1)), np.cumsum(detections[:, :, 0:num_bins], axis=2)), axis=2)
+        quotients = np.nan_to_num(detections / denoms)
+        quotients = quotients[:, :, 0:num_bins].reshape([1, 64, 64, -1])
+        detections = detections[:, :, 0:num_bins].reshape([1, 64, 64, -1])
+        spad = detections
         spad = np.transpose(spad, (0, 3, 1, 2))
-        # print(np.shape(rates))
+
+        # max correlation
+        correlations = np.copy(quotients)
+        for jj in range(res):
+            for kk in range(res):
+                correlations[0, jj, kk, :] = np.correlate(quotients[0, jj, kk, :], pulse[jj, kk, :], "same")
+
+        coates = np.argmax(correlations, axis=3) / 1023
+
+        # median filtering
+        med = scipy.signal.medfilt(coates, [1, 5, 5])
+        spad = np.transpose(spad, (0, 3, 1, 2))
 
         #old_rates = rates
         old_rates = old_rates[:, :, 0:num_bins].reshape([1, 64, 64, -1])
@@ -244,7 +261,7 @@ class SpadDataset(torch.utils.data.Dataset):
         #intensity = np.copy(signal_ppp)
         
         sample = {'rates': old_rates, 'spad': spad, 'bins_hr': bins_hr,
-                  'intensity': intensity, 'bins': bins, 'signal_ppp':signal_ppp}
+                  'intensity': intensity, 'bins': bins, 'signal_ppp':signal_ppp,'coates': coates, 'med': med}
 
         if self.transform:
             sample = self.transform(sample)

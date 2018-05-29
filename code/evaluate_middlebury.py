@@ -40,7 +40,7 @@ simulation_params = [[10, 2], [5, 2], [2, 2],
                      [10, 10], [5, 10], [2, 10],
                      [10, 50], [5, 50], [2, 50]]
 scenedir = 'middlebury/processed/'
-outdir = 'results_middlebury/'
+outdir = '/home/anantgupta/Dropbox/MATLAB/SPAD/results_middlebury/'
 scenenames = ['Art', 'Books', 'Bowling1', 'Dolls',
               'Laundry', 'Moebius', 'Plastic', 'Reindeer']
 pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -135,6 +135,10 @@ def process_denoise(opt, model, middlebury_filename, out_filename):
     rates[:,:,0:np.shape(pulse)[2]] = np.multiply(rates[:,:,0:np.shape(pulse)[2]], np.tile(np.expand_dims(signal_ppp, 2), [1, 1, np.shape(pulse)[2]]))
     rates = rates + np.tile(np.expand_dims(ambient_ppp, 2), [1, 1, num_bins])
 
+    #filtering_fractions = 1 / np.maximum(np.multiply(num_bins, ambient_ppp), 1)
+    ##filtering_fractions = np.minimum(1, filtering_fractions)
+    #rates = np.multiply(rates, np.expand_dims(filtering_fractions, axis=2))
+
     for jj in range(s1):
         for kk in range(s2):
             # print(rates[jj, kk, 0:num_bins])
@@ -161,7 +165,7 @@ def process_denoise(opt, model, middlebury_filename, out_filename):
     print(np.sum(np.sum(np.sum(detections, axis=0), axis=0)))
     # print(np.sum(np.sum(detections, axis=0), axis=0))
     # print(np.shape(np.sum(np.sum(detections, axis=0), axis=0)))
-    spad = detections[:, :, 0:num_bins].reshape([s1, s2, -1])
+    spad = detections[:, :, 0:num_bins].reshape([s2, s1, -1])
     spad = torch.from_numpy(np.transpose(spad, (2, 1, 0)))
     spad = spad.unsqueeze(0).unsqueeze(0)
 
@@ -177,7 +181,7 @@ def process_denoise(opt, model, middlebury_filename, out_filename):
 
     spad_var = Variable(spad.type(dtype))
 
-    batchsize = 1
+    batchsize = 4
     dim1 = 64
     dim2 = 64
     step = 32
@@ -200,6 +204,11 @@ def process_denoise(opt, model, middlebury_filename, out_filename):
             sp1 = Variable(torch.zeros(iter_batchsize,
                                        1, 1024, dim1, dim2))
             for k in range(iter_batchsize):
+                print(spad_var.size())
+                print(i)
+                print(j)
+                print(k)
+                print(iter_batchsize)
                 sp1[k, :, :, :, :] = spad_var[:, :, :, i*step:(i)*step + dim1,
                                               (j+k)*step:(j+k)*step + dim2]
 
