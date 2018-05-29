@@ -18,7 +18,10 @@ from configparser import ConfigParser
 from models import FusionDenoiseModel, DenoiseModel, Upsample8xDenoiseModel,\
                   Upsample2xDenoiseModel
 import skimage.io
+import matplotlib.pyplot as plt
+import time
 
+np.seterr(all='raise')
 
 cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
@@ -83,7 +86,10 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
     spad = sample['spad']
     intensity = sample['intensity']
     bins = sample['bins']
+    sins = sample['signal_ppp']
     rates = sample['rates']
+    print('avg signal_ppp:')
+    print(np.mean(sins.numpy()))
 
     spad_var = Variable(spad.type(dtype))
     depth_var = Variable(bins.type(dtype))
@@ -100,6 +106,19 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
     lsmax_denoise_out = torch.nn.LogSoftmax(dim=1)(
         denoise_out).unsqueeze(1)
     kl_loss = torch.nn.KLDivLoss()(lsmax_denoise_out, rates_var)
+    print('kl_loss:')
+    print(kl_loss.data.cpu().numpy())
+
+    #x = np.arange(0, 1024)
+    #plt.plot(x, spad_var.data.cpu().numpy()[0, 0, :, 16, 16])
+    #plt.show()
+    #time.sleep(3)
+    ##plt.close()
+    #plt.plot(x, rates_var.data.cpu().numpy()[0, 0, :, 16, 16])
+    #plt.plot(x, np.exp(lsmax_denoise_out.data.cpu().numpy()[0, 0, :, 16, 16]))
+    #plt.show()
+    #time.sleep(3)
+    #plt.close()
 
     writer.add_scalar('data/val_loss',
                       kl_loss.data.cpu().numpy(), n_iter)
@@ -114,8 +133,11 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
                      1, 3, 1, 1)
     im_intensity = intensity_var.data.cpu()[0:4, :, :, :].repeat(
                    1, 3, 1, 1)
+    im_sins = sins[0:4, :, :, :].float().repeat(1, 3, 1, 1)
+    hargmax = np.argmax(denoise_out.data.cpu()[0:4, :,:,:], axis=1).float() * 0.012
+    hargmax = hargmax.unsqueeze(1).repeat(1, 3, 1, 1)
     to_display = torch.cat((
-                 im_est_depth, im_depth_truth, im_intensity), 0)
+                 hargmax, im_est_depth, im_depth_truth, im_intensity, im_sins), 0)
     im_out = torchvision.utils.make_grid(to_display,
                                          normalize=True,
                                          scale_each=True,
@@ -288,10 +310,11 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
           model_name='FusionDenoiseModel'):
 
     for sample in tqdm(train_loader):
+        print(n_iter)
         model.train()
         spad = sample['spad']
         rates = sample['rates']
-        #intensity = sample['intensity']
+        sins = sample['signal_ppp']
         #bins = sample['bins']
 
         spad_var = Variable(spad.type(dtype))
@@ -320,6 +343,10 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
         loss.backward()
         optimizer.step()
         n_iter += 1
+
+        if (n_iter + 1) % val_every == 0:
+            print(kl_loss.data.cpu().numpy())
+            print(tv_reg.data.cpu().numpy())
 
         # log in tensorboard
         if (n_iter + 1) % val_every == 0:
@@ -558,6 +585,9 @@ def main():
             except KeyError:
                 n_iter = 0
 
+            print('n_iter')
+            print(n_iter)
+
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(opt['resume'], start_epoch))
         else:
@@ -577,6 +607,7 @@ def main():
                                        scale=opt['intensity_scale'],
                                        model_name=opt['model_name'])
         else:
+            print(n_iter)
             n_iter = train(model, train_loader, val_loader, optimizer, n_iter,
                            opt['lambda_tv'], epoch, logfile,
                            val_every=opt['print_every'],
