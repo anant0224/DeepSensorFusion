@@ -18,7 +18,9 @@ from configparser import ConfigParser
 from models import FusionDenoiseModel, DenoiseModel, Upsample8xDenoiseModel,\
                   Upsample2xDenoiseModel
 import skimage.io
+import matplotlib.pyplot as plt
 
+np.seterr(all='raise')
 
 cudnn.benchmark = True
 dtype = torch.cuda.FloatTensor
@@ -84,6 +86,8 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
     intensity = sample['intensity']
     bins = sample['bins']
     rates = sample['rates']
+    coates = sample['coates']
+    med = sample['med']
 
     spad_var = Variable(spad.type(dtype))
     depth_var = Variable(bins.type(dtype))
@@ -107,6 +111,20 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
                       sargmax.data.cpu().numpy() -
                       depth_var.data.cpu()).numpy()**2) /
                       sargmax.size()[0]), n_iter)
+    writer.add_scalar('data/coates_rmse', np.sqrt(np.mean((
+                      coates.numpy() -
+                      bins.numpy())**2) /
+                      bins.size()[0]), n_iter)
+    writer.add_scalar('data/med_rmse', np.sqrt(np.mean((
+                      med.numpy() -
+                      bins.numpy())**2) /
+                      bins.size()[0]), n_iter)
+    # x = np.arange(0, 1024)
+    # plt.plot(x, spad_var.data.cpu().numpy()[0, 0, :, 16, 16])
+    # plt.show()
+    # plt.plot(x, rates_var.data.cpu().numpy()[0, 0, :, 16, 16])
+    # plt.plot(x, np.exp(lsmax_denoise_out.data.cpu().numpy()[0, 0, :, 16, 16]))
+    # plt.show()
 
     im_est_depth = sargmax.data.cpu()[0:4, :, :, :].repeat(
                    1, 3, 1, 1)
@@ -114,8 +132,13 @@ def evaluate(model, val_loader, n_iter, model_name='FusionDenoiseModel'):
                      1, 3, 1, 1)
     im_intensity = intensity_var.data.cpu()[0:4, :, :, :].repeat(
                    1, 3, 1, 1)
+    hargmax = np.argmax(denoise_out.data.cpu()[0:4, :,:,:], axis=1).float() * 0.012
+    #print(np.shape(hargmax))
+    hargmax = hargmax.unsqueeze(1).repeat(1, 3, 1, 1)
+    im_coates = coates[0:4, :,:].float().repeat(1,3,1,1)
+    im_med = med[0:4, :,:].float().repeat(1,3,1,1)
     to_display = torch.cat((
-                 im_est_depth, im_depth_truth, im_intensity), 0)
+                 hargmax, im_est_depth, im_depth_truth, im_intensity, im_coates, im_med), 0)
     im_out = torchvision.utils.make_grid(to_display,
                                          normalize=True,
                                          scale_each=True,
@@ -294,6 +317,9 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
         #intensity = sample['intensity']
         #bins = sample['bins']
 
+        coates = sample['coates']
+        med = sample['med']
+
         spad_var = Variable(spad.type(dtype))
         #depth_var = Variable(bins.type(dtype))
         rates_var = Variable(rates.type(dtype))
@@ -311,6 +337,9 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
 
         lsmax_denoise_out = torch.nn.LogSoftmax(dim=1)(
                 denoise_out).unsqueeze(1)
+        print(np.sum(rates_var.data.cpu().numpy()))
+        print(np.sum(torch.exp(lsmax_denoise_out).data.cpu().numpy()))
+        print(torch.nn.KLDivLoss()(lsmax_denoise_out, rates_var))
         kl_loss = torch.nn.KLDivLoss()(lsmax_denoise_out, rates_var)
         tv_reg = lambda_tv * tv(sargmax)
         loss = kl_loss + tv_reg
@@ -321,16 +350,37 @@ def train(model, train_loader, val_loader, optimizer, n_iter,
         optimizer.step()
         n_iter += 1
 
+        # x = np.arange(0, 1024)
+        # plt.plot(x, spad_var.data.cpu().numpy()[0, 0, :, 16, 16])
+        # plt.show()
+        # plt.plot(x, rates_var.data.cpu().numpy()[0, 0, :, 16, 16])
+        # plt.plot(x, np.exp(lsmax_denoise_out.data.cpu().numpy()[0, 0, :, 16, 16]))
+        # plt.show()
+
         # log in tensorboard
         if (n_iter + 1) % val_every == 0:
             bins = sample['bins']
             depth_var = Variable(bins.type(dtype))
             writer.add_scalar('data/train_loss',
                               kl_loss.data.cpu().numpy(), n_iter)
+            print(kl_loss.data.cpu().numpy())
+            print(tv_reg.data.cpu().numpy())
             writer.add_scalar('data/train_rmse', np.sqrt(np.mean((
                               sargmax.data.cpu().numpy() -
                               depth_var.data.cpu().numpy())**2) /
                               sargmax.data.size()[0]), n_iter)
+            coates_loss = np.sqrt(np.mean((
+                              coates.numpy() -
+                              bins.numpy())**2) /
+                              bins.size()[0])
+            print(coates_loss)
+            med_loss = np.sqrt(np.mean((
+                              med.numpy() -
+                              bins.numpy())**2) /
+                              bins.size()[0])
+            print(med_loss)
+            writer.add_scalar('data/coates_rmse', coates_loss, n_iter)
+            writer.add_scalar('data/med_rmse', med_loss, n_iter)
 
         if (n_iter + 1) % val_every == 0:
             model.eval()
