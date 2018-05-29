@@ -213,7 +213,7 @@ class SpadDataset(torch.utils.data.Dataset):
         quotients = np.nan_to_num(detections / denoms)
         quotients = quotients[:, :, 0:num_bins].reshape([1, 64, 64, -1])
         detections = detections[:, :, 0:num_bins].reshape([1, 64, 64, -1])
-        spad = detections
+        spad = quotients
         spad = np.transpose(spad, (0, 3, 1, 2))
 
         # max correlation
@@ -226,7 +226,6 @@ class SpadDataset(torch.utils.data.Dataset):
 
         # median filtering
         med = scipy.signal.medfilt(coates, [1, 5, 5])
-        spad = np.transpose(spad, (0, 3, 1, 2))
 
         #old_rates = rates
         old_rates = old_rates[:, :, 0:num_bins].reshape([1, 64, 64, -1])
